@@ -47,7 +47,7 @@ class LocalRequirementsRepository(BaseRepository):
     def freshen_build_caches(self):
         self.repository.freshen_build_caches()
 
-    def find_best_match(self, ireq, prereleases=None):
+    def find_best_match(self, ireq, prereleases=None, prefer_local=""):
         key = key_from_req(ireq.req)
         existing_pin = self.existing_pins.get(key)
         if existing_pin and ireq_satisfied_by_existing_pin(ireq, existing_pin):
@@ -56,7 +56,7 @@ class LocalRequirementsRepository(BaseRepository):
                 project, version, ireq.extras, constraint=ireq.constraint
             )
         else:
-            return self.repository.find_best_match(ireq, prereleases)
+            return self.repository.find_best_match(ireq, prereleases, prefer_local)
 
     def get_dependencies(self, ireq):
         return self.repository.get_dependencies(ireq)

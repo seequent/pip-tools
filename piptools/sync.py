@@ -132,12 +132,14 @@ def sync(to_install, to_uninstall, verbose=False, dry_run=False, pip_flags=None,
     if not verbose:
         pip_flags += ['-q']
 
-    if os.environ.get('VIRTUAL_ENV'):
-        # find pip via PATH
-        pip = 'pip'
+    if not os.environ.get('VIRTUAL_ENV'):
+        # Safer way of using pip
+        pip = [sys.executable, '-m', 'pip']
+        # Note: pip is a standalone program installed in python scripts directory, When python installation directories
+        # are copied pip.exe is broken, hence need to call 'pip -m' to run pip module
     else:
-        # find pip in same directory as pip-sync entry-point script
-        pip = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), 'pip')
+        # find pip via PATH
+        pip = ['pip']
 
     if to_uninstall:
         if dry_run:
@@ -145,7 +147,7 @@ def sync(to_install, to_uninstall, verbose=False, dry_run=False, pip_flags=None,
             for pkg in to_uninstall:
                 click.echo("  {}".format(pkg))
         else:
-            check_call([pip, 'uninstall', '-y'] + pip_flags + sorted(to_uninstall))
+            check_call(pip + ['uninstall', '-y'] + pip_flags + sorted(to_uninstall))
 
     if to_install:
         if install_flags is None:
@@ -161,5 +163,5 @@ def sync(to_install, to_uninstall, verbose=False, dry_run=False, pip_flags=None,
                     package_args.extend(['-e', str(ireq.link or ireq.req)])
                 else:
                     package_args.append(str(ireq.req))
-            check_call([pip, 'install'] + pip_flags + install_flags + package_args)
+            check_call(pip + ['install'] + pip_flags + install_flags + package_args)
     return 0

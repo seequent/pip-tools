@@ -1,5 +1,5 @@
 import click
-from piptools.scripts import compile, sync
+from scripts import compile, sync
 
 
 @click.group()
