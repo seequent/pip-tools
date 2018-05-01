@@ -17,39 +17,14 @@ from pip.download import is_file_url, url_to_path
 from pip.index import PackageFinder
 from pip.req.req_set import RequirementSet
 from pip.wheel import Wheel
-try:
-    from pip.utils.hashes import FAVORITE_HASH
-except ImportError:
-    FAVORITE_HASH = 'sha256'
+from pip.utils.hashes import FAVORITE_HASH
 
+from .._compat import TemporaryDirectory
 from ..cache import CACHE_DIR
 from ..exceptions import NoCandidateFound
 from ..utils import (fs_str, is_pinned_requirement, lookup_table,
-                     make_install_requirement, pip_version_info)
+                     make_install_requirement)
 from .base import BaseRepository
-
-try:
-    from tempfile import TemporaryDirectory  # added in 3.2
-except ImportError:
-    from .._compat import TemporaryDirectory
-
-
-# Monkey patch pip's Wheel class to support all platform tags. This allows
-# pip-tools to generate hashes for all available distributions, not only the
-# one for the current platform.
-
-def _wheel_supported(self, tags=None):
-    # Ignore current platform. Support everything.
-    return True
-
-
-def _wheel_support_index_min(self, tags=None):
-    # All wheels are equal priority for sorting.
-    return 0
-
-
-Wheel.supported = _wheel_supported
-Wheel.support_index_min = _wheel_support_index_min
 
 
 class PyPIRepository(BaseRepository):
@@ -115,11 +90,7 @@ class PyPIRepository(BaseRepository):
 
     def find_all_candidates(self, req_name):
         if req_name not in self._available_candidates_cache:
-            # pip 8 changed the internal API, making this a public method
-            if pip_version_info >= (8, 0):
-                candidates = self.finder.find_all_candidates(req_name)
-            else:
-                candidates = self.finder._find_all_versions(req_name)
+            candidates = self.finder.find_all_candidates(req_name)
             self._available_candidates_cache[req_name] = candidates
         return self._available_candidates_cache[req_name]
 
@@ -139,7 +110,7 @@ class PyPIRepository(BaseRepository):
         # Reuses pip's internal candidate sort key to sort
         matching_candidates = [candidates_by_version[ver] for ver in matching_versions]
         if not matching_candidates:
-            raise NoCandidateFound(ireq, all_candidates)
+            raise NoCandidateFound(ireq, all_candidates, self.finder)
 
         # Prefer a local suffixed version over the 'latest' version if prefer_local is set. Adds support
         # for CI servers with feature branching. Will also ignore all other local suffixed versions,
@@ -191,7 +162,12 @@ class PyPIRepository(BaseRepository):
             raise TypeError('Expected pinned or editable InstallRequirement, got {}'.format(ireq))
 
         if ireq not in self._dependencies_cache:
-            if ireq.link and not ireq.link.is_artifact:
+            if ireq.editable and (ireq.source_dir and os.path.exists(ireq.source_dir)):
+                # No download_dir for locally available editable requirements.
+                # If a download_dir is passed, pip will  unnecessarely
+                # archive the entire source directory
+                download_dir = None
+            elif ireq.link and not ireq.link.is_artifact:
                 # No download_dir for VCS sources.  This also works around pip
                 # using git-checkout-index, which gets rid of the .git dir.
                 download_dir = None
@@ -212,17 +188,20 @@ class PyPIRepository(BaseRepository):
 
     def get_hashes(self, ireq):
         """
-        Given a pinned InstallRequire, returns a set of hashes that represent
-        all of the files for a given requirement. It is not acceptable for an
-        editable or unpinned requirement to be passed to this function.
+        Given an InstallRequirement, return a set of hashes that represent all
+        of the files for a given requirement. Editable requirements return an
+        empty set. Unpinned requirements raise a TypeError.
         """
+        if ireq.editable:
+            return set()
+
         if not is_pinned_requirement(ireq):
             raise TypeError(
-                "Expected pinned requirement, not unpinned or editable, got {}".format(ireq))
+                "Expected pinned requirement, got {}".format(ireq))
 
         # We need to get all of the candidates that match our current version
         # pin, these will represent all of the files that could possibly
-        # satisify this constraint.
+        # satisfy this constraint.
         all_candidates = self.find_all_candidates(ireq.name)
         candidates_by_version = lookup_table(all_candidates, key=lambda c: c.version)
         matching_versions = list(
@@ -240,6 +219,37 @@ class PyPIRepository(BaseRepository):
             for chunk in iter(lambda: fp.read(8096), b""):
                 h.update(chunk)
         return ":".join([FAVORITE_HASH, h.hexdigest()])
+
+    @contextmanager
+    def allow_all_wheels(self):
+        """
+        Monkey patches pip.Wheel to allow wheels from all platforms and Python versions.
+
+        This also saves the candidate cache and set a new one, or else the results from the
+        previous non-patched calls will interfere.
+        """
+        def _wheel_supported(self, tags=None):
+            # Ignore current platform. Support everything.
+            return True
+
+        def _wheel_support_index_min(self, tags=None):
+            # All wheels are equal priority for sorting.
+            return 0
+
+        original_wheel_supported = Wheel.supported
+        original_support_index_min = Wheel.support_index_min
+        original_cache = self._available_candidates_cache
+
+        Wheel.supported = _wheel_supported
+        Wheel.support_index_min = _wheel_support_index_min
+        self._available_candidates_cache = {}
+
+        try:
+            yield
+        finally:
+            Wheel.supported = original_wheel_supported
+            Wheel.support_index_min = original_support_index_min
+            self._available_candidates_cache = original_cache
 
 
 @contextmanager

@@ -1,3 +1,52 @@
+# 2.0.2 (2018-04-28)
+
+Bug Fixes:
+- Added clearer error reporting when skipping pre-releases
+([#655](https://github.com/jazzband/pip-tools/pull/655)). Thanks @WoLpH
+
+# 2.0.1 (2018-04-15)
+
+Bug Fixes:
+- Added missing package data from vendored pip, such as missing cacert.pem file. Thanks @vphilippon
+
+# 2.0.0 (2018-04-15)
+ 
+Major changes:
+- Vendored `pip` 9.0.3 to keep compatibility for users with `pip` 10.0.0
+([#644](https://github.com/jazzband/pip-tools/pull/644)). Thanks @vphilippon
+
+Features:
+- Improved the speed of pip-compile --generate-hashes by caching the hashes from an existing output file
+([#641](https://github.com/jazzband/pip-tools/pull/641)). Thanks @justicz
+- Added a `pip-sync --user` option to restrict attention to user-local directory
+([#642](https://github.com/jazzband/pip-tools/pull/642)). Thanks @jbergknoff-10e
+- Removed the hard dependency on setuptools
+([#645](https://github.com/jazzband/pip-tools/pull/645)). Thanks @vphilippon
+
+Bug fixes:
+- The pip environment markers on top-level requirements in the source file (requirements.in)
+are now properly handled and will only be processed in the right environment
+([#647](https://github.com/jazzband/pip-tools/pull/647)). Thanks @JoergRittinger
+
+# 1.11.0 (2017-11-30)
+
+Features:
+- Allow editable packages in requirements.in with `pip-compile --generate-hashes` ([#524](https://github.com/jazzband/pip-tools/pull/524)). Thanks @jdufresne
+- Allow for CA bundles with `pip-compile --cert` ([#612](https://github.com/jazzband/pip-tools/pull/612)). Thanks @khwilson
+- Improved `pip-compile` duration with large locally available editable requirement by skipping a copy to the cache
+([#583](https://github.com/jazzband/pip-tools/pull/583)). Thanks @costypetrisor
+- Slightly improved the `NoCandidateFound` error message on potential causes ([#614](https://github.com/jazzband/pip-tools/pull/614)). Thanks @vphilippon
+
+Bug Fixes:
+- Add `-markerlib` to the list of `PACKAGES_TO_IGNORE` of `pip-sync` ([#613](https://github.com/jazzband/pip-tools/pull/613)).
+
+# 1.10.2 (2017-11-22)
+
+Bug Fixes:
+- Fixed bug causing dependencies from invalid wheels for the current platform to be included ([#571](https://github.com/jazzband/pip-tools/pull/571)).
+- `pip-sync` will respect environment markers in the requirements.txt ([600](https://github.com/jazzband/pip-tools/pull/600)). Thanks @hazmat345
+- Converted the ReadMe to have a nice description rendering on PyPI. Thanks @bittner
+
 # 1.10.1 (2017-09-27)
 
 Bug Fixes:

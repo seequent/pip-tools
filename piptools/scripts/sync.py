@@ -12,10 +12,7 @@ import pip
 from .. import click, sync
 from ..exceptions import PipToolsError
 from ..logging import log
-from ..utils import assert_compatible_pip_version, flat_map
-
-# Make sure we're using a compatible version of pip
-assert_compatible_pip_version()
+from ..utils import flat_map
 
 DEFAULT_REQUIREMENTS_FILE = 'requirements.txt'
 
@@ -44,11 +41,12 @@ def requirements_parser(src_files):
 @click.option('--extra-index-url', multiple=True, help="Add additional index URL to search", envvar='PIP_EXTRA_INDEX_URL')  # noqa
 @click.option('--no-index', is_flag=True, help="Ignore package index (only looking at --find-links URLs instead)")
 @click.option('-q', '--quiet', default=False, is_flag=True, help="Give less output")
+@click.option('--user', 'user_only', is_flag=True, help="Restrict attention to user directory")
 @click.option('-p', '--prefix', required=False, help="prefix is installation dir where lib, bin and other top-level "
                                                      "folders live")
 @click.option('--no-cache', required=False, is_flag=True, help="Disable the cache")
 @click.argument('src_files', required=False, type=click.Path(exists=True), nargs=-1)
-def cli(dry_run, force, find_links, index_url, extra_index_url, no_index, quiet, prefix, no_cache, src_files):
+def cli(dry_run, force, find_links, index_url, extra_index_url, no_index, quiet, user_only, prefix, no_cache, src_files):
     """Synchronize virtual environment with requirements.txt."""
     if not src_files:
         if os.path.exists(DEFAULT_REQUIREMENTS_FILE):
@@ -76,7 +74,7 @@ def cli(dry_run, force, find_links, index_url, extra_index_url, no_index, quiet,
         log.error(str(e))
         sys.exit(2)
 
-    installed_dists = pip.get_installed_distributions(skip=[])
+    installed_dists = pip.get_installed_distributions(skip=[], user_only=user_only)
     to_install, to_uninstall = sync.diff(requirements, installed_dists)
 
     install_flags = []
@@ -98,6 +96,8 @@ def cli(dry_run, force, find_links, index_url, extra_index_url, no_index, quiet,
     if extra_index_url:
         for extra_index in extra_index_url:
             install_flags.extend(['--extra-index-url', extra_index])
+    if user_only:
+        install_flags.append('--user')
     if prefix:
         install_flags.extend(['--prefix', prefix])
     if no_cache:
