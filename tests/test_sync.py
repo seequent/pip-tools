@@ -223,7 +223,10 @@ def test_sync_install(from_line, lines):
         to_install = {from_line(line) for line in lines}
 
         sync(to_install, set())
-        check_call.assert_called_once_with(['pip', 'install', '-q'] + sorted(lines))
+        pip = 'pip'
+        if not os.environ.get('VIRTUAL_ENV'):
+            pip = sys.executable, '-m', 'pip'
+        check_call.assert_called_once_with([pip, 'install', '-q'] + sorted(lines))
 
 
 def test_sync_with_editable(from_editable):
@@ -232,4 +235,7 @@ def test_sync_with_editable(from_editable):
         to_install = {from_editable(path_to_package)}
 
         sync(to_install, set())
-        check_call.assert_called_once_with(['pip', 'install', '-q', '-e', _get_file_url(path_to_package)])
+        pip = 'pip'
+        if not os.environ.get('VIRTUAL_ENV'):
+            pip = sys.executable, '-m', 'pip'
+        check_call.assert_called_once_with([pip, 'install', '-q', '-e', _get_file_url(path_to_package)])
