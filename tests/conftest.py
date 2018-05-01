@@ -29,7 +29,7 @@ class FakeRepository(BaseRepository):
             'sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
         }
 
-    def find_best_match(self, ireq, prereleases=False):
+    def find_best_match(self, ireq, prereleases=False, prefer_local=False):
         if ireq.editable:
             return ireq
 
