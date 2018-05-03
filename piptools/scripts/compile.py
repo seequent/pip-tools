@@ -45,6 +45,8 @@ class PipCommand(pip.basecommand.Command):
               help="Add index URL to generated file")
 @click.option('--emit-trusted-host/--no-emit-trusted-host', is_flag=True,
               default=True, help="Add trusted host option to generated file")
+@click.option('--emit-find-links/--no-emit-find-links', is_flag=True,
+              default=True, help="Add find links option to generated file")
 @click.option('--annotate/--no-annotate', is_flag=True, default=True,
               help="Annotate results, indicating where dependencies come from")
 @click.option('-U', '--upgrade', is_flag=True, default=False,
@@ -60,11 +62,15 @@ class PipCommand(pip.basecommand.Command):
               help="Generate pip 8 style hashes in the resulting requirements file.")
 @click.option('--max-rounds', default=10,
               help="Maximum number of rounds before resolving the requirements aborts.")
+@click.option('--prefer-local', nargs=1, type=str, default=None,
+              help="Prefer local identified packages over the 'latest' version."
+                   "Matches exactly against +local specifier (see pep440) and will ignore"
+                   "all other local tags.")
 @click.argument('src_files', nargs=-1, type=click.Path(exists=True, allow_dash=True))
 def cli(verbose, dry_run, pre, rebuild, find_links, index_url, extra_index_url,
-        cert, client_cert, trusted_host, header, index, emit_trusted_host, annotate,
+        cert, client_cert, trusted_host, header, index, emit_trusted_host, emit_find_links, annotate,
         upgrade, upgrade_packages, output_file, allow_unsafe, generate_hashes,
-        src_files, max_rounds):
+        src_files, max_rounds, prefer_local):
     """Compiles requirements.txt from requirements.in specs."""
     log.verbose = verbose
 
@@ -183,7 +189,7 @@ def cli(verbose, dry_run, pre, rebuild, find_links, index_url, extra_index_url,
 
     try:
         resolver = Resolver(constraints, repository, prereleases=pre,
-                            clear_caches=rebuild, allow_unsafe=allow_unsafe)
+                            clear_caches=rebuild, allow_unsafe=allow_unsafe, prefer_local=prefer_local)
         results = resolver.resolve(max_rounds=max_rounds)
         if generate_hashes:
             hashes = resolver.resolve_hashes(results)
@@ -227,10 +233,12 @@ def cli(verbose, dry_run, pre, rebuild, find_links, index_url, extra_index_url,
     writer = OutputWriter(src_files, dst_file, dry_run=dry_run,
                           emit_header=header, emit_index=index,
                           emit_trusted_host=emit_trusted_host,
+                          emit_find_links=emit_find_links,
                           annotate=annotate,
                           generate_hashes=generate_hashes,
                           default_index_url=repository.DEFAULT_INDEX_URL,
                           index_urls=repository.finder.index_urls,
+                          find_links=repository.finder.find_links,
                           trusted_hosts=pip_options.trusted_hosts,
                           format_control=repository.finder.format_control)
     writer.write(results=results,

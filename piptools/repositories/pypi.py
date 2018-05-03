@@ -7,6 +7,12 @@ import os
 from contextlib import contextmanager
 from shutil import rmtree
 
+# packaging is in a different place in some pkg_resources
+try:
+    from pkg_resources.extern import packaging
+except ImportError:
+    from pkg_resources._vendor import packaging
+
 from pip.download import is_file_url, url_to_path
 from pip.index import PackageFinder
 from pip.req.req_set import RequirementSet
@@ -88,7 +94,7 @@ class PyPIRepository(BaseRepository):
             self._available_candidates_cache[req_name] = candidates
         return self._available_candidates_cache[req_name]
 
-    def find_best_match(self, ireq, prereleases=None):
+    def find_best_match(self, ireq, prereleases=None, prefer_local=""):
         """
         Returns a Version object that indicates the best match for the given
         InstallRequirement according to the external repository.
@@ -105,7 +111,41 @@ class PyPIRepository(BaseRepository):
         matching_candidates = [candidates_by_version[ver] for ver in matching_versions]
         if not matching_candidates:
             raise NoCandidateFound(ireq, all_candidates, self.finder)
-        best_candidate = max(matching_candidates, key=self.finder._candidate_sort_key)
+
+        # Prefer a local suffixed version over the 'latest' version if prefer_local is set. Adds support
+        # for CI servers with feature branching. Will also ignore all other local suffixed versions,
+        # eg;
+        # --prefer-local test-branch
+        # will take the latest build suffixed with +test-branch
+        # and in case of no suffixed branch, takes the latest build without any suffix.
+
+        # TODO: Search could be improved
+        sorted_candidates = sorted(matching_candidates, key=self.finder._candidate_sort_key, reverse=True)
+        best_candidate = None
+        if prefer_local:
+            # PIP normalises wheel names so we do the same to prefer_local such tha it will match
+            fake_version = packaging.version.Version("0+{}".format(prefer_local))
+            normalised_prefer_local = str(fake_version).split("+")[-1]
+            for install_candidate in sorted_candidates:
+                candidate_version = str(install_candidate.version)
+                if "+" in candidate_version:
+                    version, candidate_local_suffix = candidate_version.split("+")
+                    if normalised_prefer_local == candidate_local_suffix:
+                        best_candidate = install_candidate
+                        break  # We're done
+
+        if prefer_local and not best_candidate:
+            # We didn't find any preferred versions. Look for the best non-local version
+            for install_candidate in sorted_candidates:
+                candidate_version = str(install_candidate.version)
+                if "+" not in candidate_version:
+                    # List is sorted so first version to not have a "+" is the one
+                    best_candidate = install_candidate
+                    break
+
+        # Classical version finding (no special cases, just look for the latest)
+        if not prefer_local or not best_candidate:
+            best_candidate = sorted_candidates[0]
 
         # Turn the candidate into a pinned InstallRequirement
         return make_install_requirement(

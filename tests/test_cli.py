@@ -150,7 +150,7 @@ def test_trusted_host_no_emit(pip_conf):
 def test_realistic_complex_sub_dependencies(tmpdir):
 
     # make a temporary wheel of a fake package
-    subprocess.check_output(['pip', 'wheel',
+    subprocess.check_output([sys.executable, '-m', 'pip', 'wheel',
                              '--no-deps',
                              '-w', str(tmpdir),
                              os.path.join('.', 'tests', 'test_data', 'fake_package', '.')])

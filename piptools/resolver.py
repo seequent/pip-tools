@@ -42,7 +42,8 @@ class RequirementSummary(object):
 
 
 class Resolver(object):
-    def __init__(self, constraints, repository, cache=None, prereleases=False, clear_caches=False, allow_unsafe=False):
+    def __init__(self, constraints, repository, cache=None, prereleases=False, clear_caches=False, allow_unsafe=False,
+                 prefer_local=""):
         """
         This class resolves a given set of constraints (a collection of
         InstallRequirement objects) by consulting the given Repository and the
@@ -58,6 +59,7 @@ class Resolver(object):
         self.clear_caches = clear_caches
         self.allow_unsafe = allow_unsafe
         self.unsafe_constraints = set()
+        self.prefer_local = prefer_local
 
     @property
     def constraints(self):
@@ -253,7 +255,7 @@ class Resolver(object):
             # hitting the index server
             best_match = ireq
         else:
-            best_match = self.repository.find_best_match(ireq, prereleases=self.prereleases)
+            best_match = self.repository.find_best_match(ireq, prereleases=self.prereleases, prefer_local=self.prefer_local)
 
         # Format the best match
         log.debug('  found candidate {} (constraint was {})'.format(format_requirement(best_match),
