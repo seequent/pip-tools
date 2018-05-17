@@ -7,11 +7,6 @@ import os
 from contextlib import contextmanager
 from shutil import rmtree
 
-# packaging is in a different place in some pkg_resources
-try:
-    from pkg_resources.extern import packaging
-except ImportError:
-    from pkg_resources._vendor import packaging
 
 from pip.download import is_file_url, url_to_path
 from pip.index import PackageFinder
@@ -25,6 +20,24 @@ from ..exceptions import NoCandidateFound
 from ..utils import (fs_str, is_pinned_requirement, lookup_table,
                      make_install_requirement)
 from .base import BaseRepository
+
+
+def remove_dev_local(candidate, prefer_local):
+    """
+    We utilise .dev and
+    :param versions:
+    :return:
+    """
+    version = candidate.version
+    if prefer_local and version.local == prefer_local:
+        public = version.public
+        devN = public.find('.dev')
+        if devN > 0:
+            public = public[:devN]
+    else:
+        public = str(version)
+
+    return public
 
 
 class PyPIRepository(BaseRepository):
@@ -103,12 +116,23 @@ class PyPIRepository(BaseRepository):
             return ireq  # return itself as the best match
 
         all_candidates = self.find_all_candidates(ireq.name)
-        candidates_by_version = lookup_table(all_candidates, key=lambda c: c.version, unique=True)
-        matching_versions = ireq.specifier.filter((candidate.version for candidate in all_candidates),
+
+        matching_versions = ireq.specifier.filter((remove_dev_local(x, prefer_local) for x in all_candidates),
                                                   prereleases=prereleases)
 
+        # It's possible we will have multiple matching versions that appear equivalent, so we can't use a simple
+        # dictionary lookup. We need to iterate both lists and, assuming matching_versions is ordered the same as
+        # it's input, we can find our original candidates
+        matching_candidates = []
+        i = 0
+        for matched_version in matching_versions:
+            for candidate in list(all_candidates[i:]):
+                i += 1
+                if remove_dev_local(candidate, prefer_local) == matched_version:
+                    matching_candidates.append(candidate)
+                    break
+
         # Reuses pip's internal candidate sort key to sort
-        matching_candidates = [candidates_by_version[ver] for ver in matching_versions]
         if not matching_candidates:
             raise NoCandidateFound(ireq, all_candidates, self.finder)
 
@@ -123,14 +147,11 @@ class PyPIRepository(BaseRepository):
         sorted_candidates = sorted(matching_candidates, key=self.finder._candidate_sort_key, reverse=True)
         best_candidate = None
         if prefer_local:
-            # PIP normalises wheel names so we do the same to prefer_local such tha it will match
-            fake_version = packaging.version.Version("0+{}".format(prefer_local))
-            normalised_prefer_local = str(fake_version).split("+")[-1]
             for install_candidate in sorted_candidates:
                 candidate_version = str(install_candidate.version)
                 if "+" in candidate_version:
                     version, candidate_local_suffix = candidate_version.split("+")
-                    if normalised_prefer_local == candidate_local_suffix:
+                    if prefer_local == candidate_local_suffix:
                         best_candidate = install_candidate
                         break  # We're done
 
