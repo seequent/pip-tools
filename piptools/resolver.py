@@ -250,7 +250,7 @@ class Resolver(object):
             # NOTE: it's much quicker to immediately return instead of
             # hitting the index server
             best_match = ireq
-        elif is_pinned_requirement(ireq):
+        elif is_pinned_requirement(ireq) and not self.prefer_local:
             # NOTE: it's much quicker to immediately return instead of
             # hitting the index server
             best_match = ireq

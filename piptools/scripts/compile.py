@@ -7,6 +7,12 @@ import os
 import sys
 import tempfile
 
+# packaging is in a different place in some pkg_resources
+try:
+    from pkg_resources.extern import packaging
+except ImportError:
+    from pkg_resources._vendor import packaging
+
 import pip
 from pip.req import InstallRequirement, parse_requirements
 
@@ -186,6 +192,10 @@ def cli(verbose, dry_run, pre, rebuild, find_links, index_url, extra_index_url,
 
     # Check the given base set of constraints first
     Resolver.check_constraints(constraints)
+
+    if prefer_local:
+        # Normalise local version to python wheel format
+        prefer_local = packaging.version.Version("0+{}".format(prefer_local)).local
 
     try:
         resolver = Resolver(constraints, repository, prereleases=pre,
