@@ -13,7 +13,10 @@ except ImportError:
 
 from click.utils import safecall
 import pip
-from pip.req import InstallRequirement, parse_requirements
+try:  # for pip >= 10
+    from pip._internal.req import InstallRequirement, parse_requirements
+except ImportError:  # for pip <= 9.0.3
+    from pip.req import InstallRequirement, parse_requirements
 
 from .. import click
 from .._compat import install_req_from_line, parse_requirements
@@ -108,8 +111,12 @@ DEFAULT_REQUIREMENTS_OUTPUT_FILE = "requirements.txt"
     is_flag=True,
     default=True,
     help="Add trusted host option to generated file",
-@click.option('--emit-find-links/--no-emit-find-links', is_flag=True,
-              default=True, help="Add find links option to generated file")
+)
+@click.option(
+    '--emit-find-links/--no-emit-find-links',
+    is_flag=True,
+    default=True,
+    help="Add find links option to generated file",
 )
 @click.option(
     "--annotate/--no-annotate",
@@ -161,12 +168,18 @@ DEFAULT_REQUIREMENTS_OUTPUT_FILE = "requirements.txt"
     "--max-rounds",
     default=10,
     help="Maximum number of rounds before resolving the requirements aborts.",
-              help="Prefer local identified packages over the 'latest' version."
-                   "Matches exactly against +local specifier (see pep440) and will ignore"
-                   "all other local tags.")
+)
+@click.option(
+    '--prefer-local',
+    nargs=1,
+    type=str,
+    default=None,
+    help="Prefer local identified packages over the 'latest' version. Matches exactly against +local specifier"
+         " (see pep440) and will ignore all other local tags.",
+)
 @click.argument("src_files", nargs=-1, type=click.Path(exists=True, allow_dash=True))
 @click.option(
-        cert, client_cert, trusted_host, header, index, emit_trusted_host, annotate,
+    "--build-isolation/--no-build-isolation",
     is_flag=True,
     default=False,
     help="Enable isolation when building a modern source distribution. "
@@ -182,13 +195,14 @@ def cli(
     rebuild,
     find_links,
     index_url,
-        src_files, max_rounds):
+    extra_index_url,
     cert,
     client_cert,
     trusted_host,
     header,
     index,
     emit_trusted_host,
+    emit_find_links,
     annotate,
     upgrade,
     upgrade_packages,
@@ -198,6 +212,7 @@ def cli(
     src_files,
     max_rounds,
     build_isolation,
+    prefer_local,
 ):
     """Compiles requirements.txt from requirements.in specs."""
     log.verbosity = verbose - quiet
@@ -354,7 +369,6 @@ def cli(
     if prefer_local:
         # Normalise local version to python wheel format
         prefer_local = packaging.version.Version("0+{}".format(prefer_local)).local
-
     try:
         resolver = Resolver(
             constraints,
@@ -362,7 +376,7 @@ def cli(
             prereleases=repository.finder.allow_all_prereleases or pre,
             clear_caches=rebuild,
             allow_unsafe=allow_unsafe,
-			prefer_local=prefer_local
+            prefer_local=prefer_local
         )
         results = resolver.resolve(max_rounds=max_rounds)
         if generate_hashes:

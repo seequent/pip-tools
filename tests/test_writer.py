@@ -33,7 +33,7 @@ def writer(tmpdir_cwd):
             emit_header=True,
             emit_index=True,
             emit_trusted_host=True,
-			emit_find_links=False,
+            emit_find_links=False,
             annotate=True,
             generate_hashes=False,
             default_index_url=None,

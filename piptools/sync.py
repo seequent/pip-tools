@@ -153,8 +153,7 @@ def sync(to_install, to_uninstall, verbose=False, dry_run=False, install_flags=N
             click.echo("Everything up-to-date")
         return 0
 
-    if pip_flags is None:
-        pip_flags = []
+    pip_flags = []
     if not verbose:
         pip_flags += ["-q"]
 
@@ -172,12 +171,7 @@ def sync(to_install, to_uninstall, verbose=False, dry_run=False, install_flags=N
             for pkg in to_uninstall:
                 click.echo("  {}".format(pkg))
         else:
-            check_call(  # nosec
-                pip + ["uninstall", "-y"]
-                + pip_flags
-                + sorted(to_uninstall)
-            )
-
+            check_call(pip + ["uninstall", "-y"] + pip_flags + sorted(to_uninstall))
     if to_install:
         if install_flags is None:
             install_flags = []

@@ -23,6 +23,7 @@ dist
 # IDE
 .idea
 venv/
+envrc/
 
 # Test files
 requirements.in

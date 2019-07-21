@@ -277,11 +277,10 @@ def test_sync_install_temporary_requirement_file(
     with mock.patch("piptools.sync.check_call") as check_call:
         to_install = {from_line("django==1.8")}
         sync(to_install, set())
-        python = []
-        if not os.environ.get('VIRTUAL_ENV'):
-            python = [sys.executable, '-m']
-        check_call.assert_called_once_with( python + \
+        check_call.assert_called_once_with(
             [
+                sys.executable,
+                "-m",
                 "pip",
                 "install",
                 "-r",
@@ -367,6 +366,9 @@ def test_sync_requirement_file_with_hashes(
 
         sync(to_install, set())
 
+        expected = (
+            "click==4.0 \\\n"
+            "    --hash=sha256:9ab1d313f99b209f8f71a629"
             "f36833030c8d7c72282cf7756834baf567dca662\n"
             "django==1.8 \\\n"
             "    --hash=sha256:6a03ce2feafdd193a0ba8a26"
@@ -377,7 +379,7 @@ def test_sync_requirement_file_with_hashes(
             "    --hash=sha256:f5c056e8f62d45ba8215e5cb8f"
             "50dfccb198b4b9fbea8500674f3443e4689589"
         )
-        check_call.assert_called_once_with(['pip', 'install', '-q', '-e', _get_file_url(path_to_package)])
+        mocked_tmp_req_file.write.assert_called_once_with(expected)
 
 
 @mock.patch("piptools.sync.click.echo")

@@ -46,7 +46,7 @@ class OutputWriter(object):
         emit_header,
         emit_index,
         emit_trusted_host,
-		emit_find_links,
+        emit_find_links,
         annotate,
         generate_hashes,
         default_index_url,
@@ -108,7 +108,7 @@ class OutputWriter(object):
             yield "--only-binary {}".format(ob)
 
     def write_find_links(self):
-	    if self.emit_find_links:
+        if self.emit_find_links:
             for find_link in dedup(self.find_links):
                 yield "--find-links {}".format(find_link)
 

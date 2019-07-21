@@ -5,6 +5,10 @@ import os
 import sys
 import shlex
 import optparse
+try:  # for pip >= 10
+    from pip._internal.req import req_file
+except ImportError:  # for pip <= 9.0.3
+    from pip.req import req_file
 
 from .. import click, sync
 from .._compat import get_installed_distributions, parse_requirements
@@ -16,13 +20,13 @@ DEFAULT_REQUIREMENTS_FILE = "requirements.txt"
 
 
 def requirements_parser(src_files):
-    parser = pip.req.req_file.build_parser()
+    parser = req_file.build_parser(None)
     all_txt = b''
     for r in src_files:
         with open(r, 'r') as req_txt:
             for ln in req_txt.readlines():
                 if not ln.startswith(b'#'):     # ignore comments
-                    _, options_str = pip.req.req_file.break_args_options(ln)
+                    _, options_str = req_file.break_args_options(ln)
                     all_txt += options_str
     txt_file_flags = None
     if all_txt:
@@ -73,7 +77,8 @@ def requirements_parser(src_files):
     "--user", "user_only", is_flag=True, help="Restrict attention to user directory"
 )
 @click.option(
-    '-p', '--prefix', required=False, help="prefix is installation dir where lib, bin and other top-level folders live")
+    '-p', '--prefix', required=False, help="prefix is installation dir where lib, bin and other top-level folders live"
+)
 @click.option('--no-cache', required=False, is_flag=True, help="Disable the cache")
 @click.option("--cert", help="Path to alternate CA bundle.")
 @click.option(
@@ -82,7 +87,7 @@ def requirements_parser(src_files):
     "the private key and the certificate in PEM format.",
 )
 @click.argument("src_files", required=False, type=click.Path(exists=True), nargs=-1)
-def cli(dry_run, force, find_links, index_url, extra_index_url, no_index, quiet, user_only, src_files):
+def cli(
     dry_run,
     force,
     find_links,
@@ -92,8 +97,8 @@ def cli(dry_run, force, find_links, index_url, extra_index_url, no_index, quiet,
     no_index,
     quiet,
     user_only,
-	prefix,
-	no_cache,
+    prefix,
+    no_cache,
     cert,
     client_cert,
     src_files,

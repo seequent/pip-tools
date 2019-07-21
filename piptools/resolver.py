@@ -100,7 +100,7 @@ class Resolver(object):
         prereleases=False,
         clear_caches=False,
         allow_unsafe=False,
-		prefer_local=""
+        prefer_local=""
     ):
         """
         This class resolves a given set of constraints (a collection of

@@ -191,7 +191,14 @@ class PyPIRepository(BaseRepository):
         # and in case of no suffixed branch, takes the latest build without any suffix.
 
         # TODO: Search could be improved
-        sorted_candidates = sorted(matching_candidates, key=self.finder._candidate_sort_key, reverse=True)
+        # pip <= 19.0.3
+        if hasattr(self.finder, "_candidate_sort_key"):
+            sort_key = self.finder._candidate_sort_key
+        # pip >= 19.1
+        else:
+            sort_key = self.finder.candidate_evaluator._sort_key
+
+        sorted_candidates = sorted(matching_candidates, key=sort_key, reverse=True)
         best_candidate = None
         if prefer_local:
             for install_candidate in sorted_candidates:
