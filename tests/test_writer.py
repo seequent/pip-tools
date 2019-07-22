@@ -33,7 +33,7 @@ def writer(tmpdir_cwd):
             emit_header=True,
             emit_index=True,
             emit_trusted_host=True,
-            emit_find_links=False,
+            emit_find_links=True,
             annotate=True,
             generate_hashes=False,
             default_index_url=None,
@@ -320,4 +320,5 @@ def test_write_find_links(writer, find_links, expected_lines):
     Test write_find_links method.
     """
     writer.find_links = find_links
-    assert list(writer.write_find_links()) == expected_lines
+    found_links = list(writer.write_find_links())
+    assert found_links == expected_lines

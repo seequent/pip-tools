@@ -21,11 +21,11 @@ DEFAULT_REQUIREMENTS_FILE = "requirements.txt"
 
 def requirements_parser(src_files):
     parser = req_file.build_parser(None)
-    all_txt = b''
+    all_txt = ''
     for r in src_files:
         with open(r, 'r') as req_txt:
             for ln in req_txt.readlines():
-                if not ln.startswith(b'#'):     # ignore comments
+                if not ln.startswith('#'):     # ignore comments
                     _, options_str = req_file.break_args_options(ln)
                     all_txt += options_str
     txt_file_flags = None
