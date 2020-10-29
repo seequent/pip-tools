@@ -6,7 +6,10 @@
 
 # Virtualenvs
 .envrc
+envrc/
 .direnv
+.venv
+venv/
 
 # Testing
 .pytest_cache/
@@ -22,8 +25,6 @@ dist
 
 # IDE
 .idea
-venv/
-envrc/
 
 # Test files
 requirements.in
