@@ -21,7 +21,7 @@ DEFAULT_REQUIREMENTS_FILE = "requirements.txt"
 
 
 def requirements_parser(src_files):
-    parser = req_file.build_parser(None)
+    parser = req_file.build_parser()
     all_txt = ''
     for r in src_files:
         with open(r, 'r') as req_txt:
