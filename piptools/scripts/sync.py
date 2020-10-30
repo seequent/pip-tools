@@ -173,7 +173,7 @@ def cli(
     requirements_flags = requirements_parser(src_files)
     if requirements_flags:
         for link in requirements_flags.find_links:
-            install_flags.extend(['-f', link])
+            install_flags.extend(['--find-links', link])
         for host in requirements_flags.trusted_hosts:
             install_flags.extend(['--trusted-host', host])
 
