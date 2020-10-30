@@ -1,22 +1,21 @@
 from __future__ import unicode_literals
 
-from itertools import chain
 import os
 import re
+from itertools import chain
 
 import six
 
 from .click import unstyle
 from .logging import log
 from .utils import (
+    UNSAFE_PACKAGES,
     comment,
     dedup,
     format_requirement,
     get_compile_command,
     key_from_ireq,
-    UNSAFE_PACKAGES,
 )
-
 
 MESSAGE_UNHASHED_PACKAGE = comment(
     "# WARNING: pip install will require the following package to be hashed."
