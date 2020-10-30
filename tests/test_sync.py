@@ -473,14 +473,14 @@ def test_sync_uninstall_pip_command(check_call):
 
     sync(set(), to_uninstall)
 
-    if not os.environ.get('VIRTUAL_ENV'):
+    if not os.environ.get("VIRTUAL_ENV"):
         # Safer way of using pip
-        pip = [sys.executable, '-m', 'pip']
+        pip = [sys.executable, "-m", "pip"]
         # Note: pip is a standalone program installed in python scripts directory, When python installation directories
         # are copied pip.exe is broken, hence need to call 'pip -m' to run pip module
     else:
         # find pip via PATH
-        pip = ['pip']
+        pip = ["pip"]
 
     check_call.assert_called_once_with(
         pip + ["uninstall", "-y", "-q"] + sorted(to_uninstall)

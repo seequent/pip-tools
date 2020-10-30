@@ -200,12 +200,12 @@ class BaseCommand(Command):
     help="Maximum number of rounds before resolving the requirements aborts.",
 )
 @click.option(
-    '--prefer-local',
+    "--prefer-local",
     nargs=1,
     type=str,
     default=None,
     help="Prefer local identified packages over the 'latest' version. Matches exactly against +local specifier"
-         " (see pep440) and will ignore all other local tags.",
+    " (see pep440) and will ignore all other local tags.",
 )
 @click.argument("src_files", nargs=-1, type=click.Path(exists=True, allow_dash=True))
 @click.option(
@@ -468,7 +468,7 @@ def cli(
             cache=DependencyCache(cache_dir),
             clear_caches=rebuild,
             allow_unsafe=allow_unsafe,
-            prefer_local=prefer_local
+            prefer_local=prefer_local,
         )
         results = resolver.resolve(max_rounds=max_rounds)
         if generate_hashes:

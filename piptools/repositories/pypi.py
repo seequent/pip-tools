@@ -50,7 +50,7 @@ def remove_dev_local(candidate, prefer_local):
     version = candidate.version
     if prefer_local and version.local == prefer_local:
         public = version.public
-        devN = public.find('.dev')
+        devN = public.find(".dev")
         if devN > 0:
             public = public[:devN]
     else:
@@ -142,8 +142,10 @@ class PyPIRepository(BaseRepository):
 
         all_candidates = self.find_all_candidates(ireq.name)
 
-        matching_versions = ireq.specifier.filter((remove_dev_local(x, prefer_local) for x in all_candidates),
-                                                  prereleases=prereleases)
+        matching_versions = ireq.specifier.filter(
+            (remove_dev_local(x, prefer_local) for x in all_candidates),
+            prereleases=prereleases,
+        )
 
         # It's possible we will have multiple matching versions that appear equivalent, so we can't use a simple
         # dictionary lookup. We need to iterate both lists and, assuming matching_versions is ordered the same as

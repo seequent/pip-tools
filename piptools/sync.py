@@ -169,14 +169,14 @@ def sync(
     if not verbose:
         pip_flags += ["-q"]
 
-    if not os.environ.get('VIRTUAL_ENV'):
+    if not os.environ.get("VIRTUAL_ENV"):
         # Safer way of using pip
-        pip = [sys.executable, '-m', 'pip']
+        pip = [sys.executable, "-m", "pip"]
         # Note: pip is a standalone program installed in python scripts directory, When python installation directories
         # are copied pip.exe is broken, hence need to call 'pip -m' to run pip module
     else:
         # find pip via PATH
-        pip = ['pip']
+        pip = ["pip"]
     if ask:
         dry_run = True
 
@@ -200,9 +200,7 @@ def sync(
     if not dry_run:
         if to_uninstall:
             check_call(  # nosec
-                pip + ["uninstall", "-y"]
-                + pip_flags
-                + sorted(to_uninstall)
+                pip + ["uninstall", "-y"] + pip_flags + sorted(to_uninstall)
             )
 
         if to_install:

@@ -22,11 +22,11 @@ DEFAULT_REQUIREMENTS_FILE = "requirements.txt"
 
 def requirements_parser(src_files):
     parser = req_file.build_parser()
-    all_txt = ''
+    all_txt = ""
     for r in src_files:
-        with open(r, 'r') as req_txt:
+        with open(r, "r") as req_txt:
             for ln in req_txt.readlines():
-                if not ln.startswith('#'):     # ignore comments
+                if not ln.startswith("#"):  # ignore comments
                     _, options_str = req_file.break_args_options(ln)
                     all_txt += options_str
     txt_file_flags = None
@@ -84,9 +84,12 @@ def requirements_parser(src_files):
     "--user", "user_only", is_flag=True, help="Restrict attention to user directory"
 )
 @click.option(
-    '-p', '--prefix', required=False, help="prefix is installation dir where lib, bin and other top-level folders live"
+    "-p",
+    "--prefix",
+    required=False,
+    help="prefix is installation dir where lib, bin and other top-level folders live",
 )
-@click.option('--no-cache', required=False, is_flag=True, help="Disable the cache")
+@click.option("--no-cache", required=False, is_flag=True, help="Disable the cache")
 @click.option("--cert", help="Path to alternate CA bundle.")
 @click.option(
     "--client-cert",
@@ -173,9 +176,9 @@ def cli(
     requirements_flags = requirements_parser(src_files)
     if requirements_flags:
         for link in requirements_flags.find_links:
-            install_flags.extend(['--find-links', link])
+            install_flags.extend(["--find-links", link])
         for host in requirements_flags.trusted_hosts:
-            install_flags.extend(['--trusted-host', host])
+            install_flags.extend(["--trusted-host", host])
 
     sys.exit(
         sync.sync(
