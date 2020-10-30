@@ -147,9 +147,10 @@ class PyPIRepository(BaseRepository):
             prereleases=prereleases,
         )
 
-        # It's possible we will have multiple matching versions that appear equivalent, so we can't use a simple
-        # dictionary lookup. We need to iterate both lists and, assuming matching_versions is ordered the same as
-        # it's input, we can find our original candidates
+        # It's possible we will have multiple matching versions that appear equivalent,
+        # so we can't use a simple dictionary lookup. We need to iterate both lists
+        # and, assuming matching_versions is ordered the same as its input, we can find
+        # our original candidates.
         matching_candidates = []
         i = 0
         for matched_version in matching_versions:
@@ -162,8 +163,9 @@ class PyPIRepository(BaseRepository):
         if not matching_candidates:
             raise NoCandidateFound(ireq, all_candidates, self.finder)
 
-        # Prefer a local suffixed version over the 'latest' version if prefer_local is set. Adds support
-        # for CI servers with feature branching. Will also ignore all other local suffixed versions,
+        # Prefer a local suffixed version over the 'latest' version if prefer_local is
+        # set. Adds support for CI servers with feature branching. Will also ignore all
+        # other local suffixed versions,
         # eg;
         # --prefer-local test-branch
         # will take the latest build suffixed with +test-branch
