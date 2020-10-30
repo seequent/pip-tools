@@ -195,6 +195,10 @@ def test_pip_install_flags_in_requirements_file(check_call, runner, install_flag
         reqs.write(" ".join(install_flags) + "\n")
         reqs.write("six==1.10.0")
 
+    # See requirements_parser in piptools/scripts/sync.py
+    requirement_flag_indexes = [i for i, flag in enumerate([install_flags]) if flag[0] in ("--find-links", "--trusted-host")]
+    [install_flags.extend([install_flags][i]) for i in requirement_flag_indexes]
+
     out = runner.invoke(cli)
     assert out.exit_code == 0, out
 
