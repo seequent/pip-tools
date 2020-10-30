@@ -248,10 +248,10 @@ def _compose_install_flags(
         result.append("--user")
 
     if prefix:
-        install_flags.extend(["--prefix", prefix])
+        result.extend(["--prefix", prefix])
 
     if no_cache:
-        install_flags.extend(["--no-cache-dir"])
+        result.extend(["--no-cache-dir"])
 
     if cert:
         result.extend(["--cert", cert])
