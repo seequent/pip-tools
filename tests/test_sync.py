@@ -1,11 +1,13 @@
 import os
-import platform
 import sys
 import tempfile
 from collections import Counter
 
 import mock
 import pytest
+from pip._internal.utils.urls import path_to_url
+
+from .constants import PACKAGES_PATH
 
 from piptools.exceptions import IncompatibleRequirements
 from piptools.sync import dependency_tree, diff, merge, sync
@@ -26,7 +28,7 @@ def mocked_tmp_req_file(mocked_tmp_file):
 
 @pytest.mark.parametrize(
     ("installed", "root", "expected"),
-    [
+    (
         ([], "pip-tools", []),
         ([("pip-tools==1", [])], "pip-tools", ["pip-tools"]),
         ([("pip-tools==1", []), ("django==1.7", [])], "pip-tools", ["pip-tools"]),
@@ -59,7 +61,7 @@ def mocked_tmp_req_file(mocked_tmp_file):
             "root",
             ["root", "child"],
         ),
-    ],
+    ),
 )
 def test_dependency_tree(fake_dist, installed, root, expected):
     installed = {
@@ -226,17 +228,9 @@ def test_diff_leave_piptools_alone(fake_dist, from_line):
     assert to_uninstall == {"foobar"}
 
 
-def _get_file_url(local_path):
-    if platform.system() == "Windows":
-        local_path = "/%s" % local_path.replace("\\", "/")
-    return "file://%s" % local_path
-
-
 def test_diff_with_editable(fake_dist, from_editable):
     installed = [fake_dist("small-fake-with-deps==0.0.1"), fake_dist("six==1.10.0")]
-    path_to_package = os.path.join(
-        os.path.dirname(__file__), "test_data", "small_fake_package"
-    )
+    path_to_package = os.path.join(PACKAGES_PATH, "small_fake_with_deps")
     reqs = [from_editable(path_to_package)]
     to_install, to_uninstall = diff(reqs, installed)
 
@@ -247,7 +241,7 @@ def test_diff_with_editable(fake_dist, from_editable):
     assert len(to_install) == 1
     package = list(to_install)[0]
     assert package.editable
-    assert str(package.link) == _get_file_url(path_to_package)
+    assert package.link.url == path_to_url(path_to_package)
 
 
 def test_diff_with_matching_url_versions(fake_dist, from_line):
@@ -382,13 +376,13 @@ def test_sync_requirement_file_with_hashes(
         mocked_tmp_req_file.write.assert_called_once_with(expected)
 
 
-@mock.patch("piptools.sync.click.echo")
-def test_sync_up_to_date(echo):
+def test_sync_up_to_date(runner):
     """
     Everything up-to-date should be printed.
     """
-    sync(set(), set(), verbose=True)
-    echo.assert_called_once_with("Everything up-to-date")
+    with runner.isolation() as (stdout, _):
+        sync(set(), set(), verbose=True)
+    assert stdout.getvalue().decode().splitlines() == ["Everything up-to-date"]
 
 
 @mock.patch("piptools.sync.check_call")
@@ -403,38 +397,74 @@ def test_sync_verbose(check_call, from_line):
         assert "-q" not in check_call_args
 
 
-@mock.patch("piptools.sync.click.echo")
-def test_sync_dry_run_would_install(echo, from_line):
+@pytest.mark.parametrize(
+    ("to_install", "to_uninstall", "expected_message"),
+    (
+        ({"django==1.8", "click==4.0"}, set(), "Would install:"),
+        (set(), {"django==1.8", "click==4.0"}, "Would uninstall:"),
+    ),
+)
+def test_sync_dry_run(runner, from_line, to_install, to_uninstall, expected_message):
     """
-    Sync with --dry-run option prints what's is going to be installed.
+    Sync with --dry-run option prints what's is going to be installed/uninstalled.
     """
-    to_install = {from_line("django==1.8"), from_line("click==4.0")}
+    to_install = set(from_line(pkg) for pkg in to_install)
 
-    sync(to_install, set(), dry_run=True)
+    with runner.isolation() as (stdout, _):
+        sync(to_install, to_uninstall, dry_run=True)
 
-    expected_calls = [
-        mock.call("Would install:"),
-        mock.call("  django==1.8"),
-        mock.call("  click==4.0"),
+    assert stdout.getvalue().decode().splitlines() == [
+        expected_message,
+        "  click==4.0",
+        "  django==1.8",
     ]
-    echo.assert_has_calls(expected_calls, any_order=True)
 
 
-@mock.patch("piptools.sync.click.echo")
-def test_sync_dry_run_would_uninstall(echo, from_line):
+@pytest.mark.parametrize(
+    ("to_install", "to_uninstall", "expected_message"),
+    (
+        ({"django==1.8", "click==4.0"}, set(), "Would install:"),
+        (set(), {"django==1.8", "click==4.0"}, "Would uninstall:"),
+    ),
+)
+@mock.patch("piptools.sync.check_call")
+@mock.patch("piptools.sync.click.confirm", return_value=False)
+def test_sync_ask_declined(
+    confirm, check_call, runner, from_line, to_install, to_uninstall, expected_message
+):
     """
-    Sync with --dry-run option prints what is going to be uninstalled.
+    Sync with --ask option does a dry run if the user declines
     """
-    to_uninstall = {from_line("django==1.8"), from_line("click==4.0")}
 
-    sync(set(), to_uninstall, dry_run=True)
+    to_install = set(from_line(pkg) for pkg in to_install)
 
-    expected_calls = [
-        mock.call("Would uninstall:"),
-        mock.call("  django==1.8"),
-        mock.call("  click==4.0"),
+    with runner.isolation() as (stdout, _):
+        sync(to_install, to_uninstall, ask=True)
+
+    assert stdout.getvalue().decode().splitlines() == [
+        expected_message,
+        "  click==4.0",
+        "  django==1.8",
     ]
-    echo.assert_has_calls(expected_calls, any_order=True)
+    confirm.assert_called_once_with("Would you like to proceed with these changes?")
+    check_call.assert_not_called()
+
+
+@pytest.mark.parametrize("dry_run", (True, False))
+@mock.patch("piptools.sync.click.confirm")
+@mock.patch("piptools.sync.check_call")
+def test_sync_ask_accepted(check_call, confirm, from_line, dry_run):
+    """
+    pip should be called as normal when the user confirms, even with dry_run
+    """
+    confirm.return_value = True
+
+    sync(
+        {from_line("django==1.8")}, {from_line("click==4.0")}, ask=True, dry_run=dry_run
+    )
+    assert check_call.call_count == 2
+
+    confirm.assert_called_once_with("Would you like to proceed with these changes?")
 
 
 @mock.patch("piptools.sync.check_call")
@@ -443,14 +473,15 @@ def test_sync_uninstall_pip_command(check_call):
 
     sync(set(), to_uninstall)
 
-    if not os.environ.get('VIRTUAL_ENV'):
+    if not os.environ.get("VIRTUAL_ENV"):
         # Safer way of using pip
-        pip = [sys.executable, '-m', 'pip']
-        # Note: pip is a standalone program installed in python scripts directory, When python installation directories
-        # are copied pip.exe is broken, hence need to call 'pip -m' to run pip module
+        pip = [sys.executable, "-m", "pip"]
+        # Note: pip is a standalone program installed in python scripts directory, When
+        # python installation directories are copied pip.exe is broken, hence need to
+        # call 'pip -m' to run pip module.
     else:
         # find pip via PATH
-        pip = ['pip']
+        pip = ["pip"]
 
     check_call.assert_called_once_with(
         pip + ["uninstall", "-y", "-q"] + sorted(to_uninstall)

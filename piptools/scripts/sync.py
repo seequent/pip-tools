@@ -1,31 +1,32 @@
 # coding: utf-8
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import itertools
 import os
-import sys
 import shlex
-import optparse
-try:  # for pip >= 10
-    from pip._internal.req import req_file
-except ImportError:  # for pip <= 9.0.3
-    from pip.req import req_file
+import sys
+
+from pip._internal.commands import create_command
+from pip._internal.req import req_file
+from pip._internal.utils.misc import get_installed_distributions
 
 from .. import click, sync
-from .._compat import get_installed_distributions, parse_requirements
+from .._compat import parse_requirements
 from ..exceptions import PipToolsError
 from ..logging import log
+from ..repositories import PyPIRepository
 from ..utils import flat_map
 
 DEFAULT_REQUIREMENTS_FILE = "requirements.txt"
 
 
 def requirements_parser(src_files):
-    parser = req_file.build_parser(None)
-    all_txt = ''
+    parser = req_file.build_parser()
+    all_txt = ""
     for r in src_files:
-        with open(r, 'r') as req_txt:
+        with open(r, "r") as req_txt:
             for ln in req_txt.readlines():
-                if not ln.startswith('#'):     # ignore comments
+                if not ln.startswith("#"):  # ignore comments
                     _, options_str = req_file.break_args_options(ln)
                     all_txt += options_str
     txt_file_flags = None
@@ -34,8 +35,14 @@ def requirements_parser(src_files):
     return txt_file_flags
 
 
-@click.command()
+@click.command(context_settings={"help_option_names": ("-h", "--help")})
 @click.version_option()
+@click.option(
+    "-a",
+    "--ask",
+    is_flag=True,
+    help="Show what would happen, then ask whether to continue",
+)
 @click.option(
     "-n",
     "--dry-run",
@@ -77,9 +84,12 @@ def requirements_parser(src_files):
     "--user", "user_only", is_flag=True, help="Restrict attention to user directory"
 )
 @click.option(
-    '-p', '--prefix', required=False, help="prefix is installation dir where lib, bin and other top-level folders live"
+    "-p",
+    "--prefix",
+    required=False,
+    help="prefix is installation dir where lib, bin and other top-level folders live",
 )
-@click.option('--no-cache', required=False, is_flag=True, help="Disable the cache")
+@click.option("--no-cache", required=False, is_flag=True, help="Disable the cache")
 @click.option("--cert", help="Path to alternate CA bundle.")
 @click.option(
     "--client-cert",
@@ -87,7 +97,9 @@ def requirements_parser(src_files):
     "the private key and the certificate in PEM format.",
 )
 @click.argument("src_files", required=False, type=click.Path(exists=True), nargs=-1)
+@click.option("--pip-args", help="Arguments to pass directly to pip install.")
 def cli(
+    ask,
     dry_run,
     force,
     find_links,
@@ -102,6 +114,7 @@ def cli(
     cert,
     client_cert,
     src_files,
+    pip_args,
 ):
     """Synchronize virtual environment with requirements.txt."""
     if not src_files:
@@ -124,8 +137,15 @@ def cli(
             log.error("ERROR: " + msg)
             sys.exit(2)
 
+    install_command = create_command("install")
+    options, _ = install_command.parse_args([])
+    session = install_command._build_session(options)
+    finder = install_command._build_package_finder(options=options, session=session)
+
+    # Parse requirements file. Note, all options inside requirements file
+    # will be collected by the finder.
     requirements = flat_map(
-        lambda src: parse_requirements(src, session=True), src_files
+        lambda src: parse_requirements(src, finder=finder, session=session), src_files
     )
 
     try:
@@ -137,38 +157,28 @@ def cli(
     installed_dists = get_installed_distributions(skip=[], user_only=user_only)
     to_install, to_uninstall = sync.diff(requirements, installed_dists)
 
-    install_flags = []
+    # Add flags from command line options
+    install_flags = _compose_install_flags(
+        finder,
+        no_index=no_index,
+        index_url=index_url,
+        extra_index_url=extra_index_url,
+        trusted_host=trusted_host,
+        find_links=find_links,
+        user_only=user_only,
+        prefix=prefix,
+        no_cache=no_cache,
+        cert=cert,
+        client_cert=client_cert,
+    ) + shlex.split(pip_args or "")
+
     # Add flags from requirements.txt
     requirements_flags = requirements_parser(src_files)
     if requirements_flags:
         for link in requirements_flags.find_links:
-            install_flags.extend(['-f', link])
+            install_flags.extend(["--find-links", link])
         for host in requirements_flags.trusted_hosts:
-            install_flags.extend(['--trusted-host', host])
-
-    # Add flags from command line options
-    for link in find_links or []:
-        install_flags.extend(["-f", link])
-    if no_index:
-        install_flags.append("--no-index")
-    if index_url:
-        install_flags.extend(["-i", index_url])
-    if extra_index_url:
-        for extra_index in extra_index_url:
-            install_flags.extend(["--extra-index-url", extra_index])
-    if trusted_host:
-        for host in trusted_host:
             install_flags.extend(["--trusted-host", host])
-    if user_only:
-        install_flags.append("--user")
-    if prefix:
-        install_flags.extend(["--prefix", prefix])
-    if no_cache:
-        install_flags.extend(["--no-cache-dir"])
-    if cert:
-        install_flags.extend(["--cert", cert])
-    if client_cert:
-        install_flags.extend(["--client-cert", client_cert])
 
     sys.exit(
         sync.sync(
@@ -177,5 +187,76 @@ def cli(
             verbose=(not quiet),
             dry_run=dry_run,
             install_flags=install_flags,
+            ask=ask,
         )
     )
+
+
+def _compose_install_flags(
+    finder,
+    no_index=False,
+    index_url=None,
+    extra_index_url=None,
+    trusted_host=None,
+    find_links=None,
+    user_only=False,
+    prefix=None,
+    no_cache=False,
+    cert=None,
+    client_cert=None,
+):
+    """
+    Compose install flags with the given finder and CLI options.
+    """
+    result = []
+
+    # Build --index-url/--extra-index-url/--no-index
+    if no_index:
+        result.append("--no-index")
+    elif index_url:
+        result.extend(["--index-url", index_url])
+    elif finder.index_urls:
+        finder_index_url = finder.index_urls[0]
+        if finder_index_url != PyPIRepository.DEFAULT_INDEX_URL:
+            result.extend(["--index-url", finder_index_url])
+        for extra_index in finder.index_urls[1:]:
+            result.extend(["--extra-index-url", extra_index])
+    else:
+        result.append("--no-index")
+
+    for extra_index in extra_index_url or []:
+        result.extend(["--extra-index-url", extra_index])
+
+    # Build --trusted-hosts
+    for host in itertools.chain(trusted_host or [], finder.trusted_hosts):
+        result.extend(["--trusted-host", host])
+
+    # Build --find-links
+    for link in itertools.chain(find_links or [], finder.find_links):
+        result.extend(["--find-links", link])
+
+    # Build format controls --no-binary/--only-binary
+    for format_control in ("no_binary", "only_binary"):
+        formats = getattr(finder.format_control, format_control)
+        if not formats:
+            continue
+        result.extend(
+            ["--" + format_control.replace("_", "-"), ",".join(sorted(formats))]
+        )
+
+    if user_only:
+        result.append("--user")
+
+    if prefix:
+        result.extend(["--prefix", prefix])
+
+    if no_cache:
+        result.extend(["--no-cache-dir"])
+
+    if cert:
+        result.extend(["--cert", cert])
+
+    if client_cert:
+        result.extend(["--client-cert", client_cert])
+
+    return result

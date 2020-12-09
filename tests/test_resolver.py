@@ -1,13 +1,14 @@
 import pytest
 
+from piptools._compat import PIP_VERSION
 from piptools.exceptions import NoCandidateFound
-from piptools.resolver import combine_install_requirements
+from piptools.resolver import RequirementSummary, combine_install_requirements
 
 
 @pytest.mark.parametrize(
     ("input", "expected", "prereleases", "unsafe_constraints"),
     (
-        (tup + (False, set())[len(tup) - 2 :])  # noqa: E203
+        (tup + (False, set())[len(tup) - 2 :])
         for tup in [
             (["Django"], ["django==1.8"]),
             (
@@ -81,7 +82,7 @@ from piptools.resolver import combine_install_requirements
             # We must remove child dependencies from result if parent
             # is removed (e.g. vine from amqp>=2.0)
             # See: GH-370
-            # because of upated dependencies in the test index, we need to pin celery
+            # because of updated dependencies in the test index, we need to pin celery
             # in order to reproduce vine removal (because it was readded in later
             # releases)
             (
@@ -129,6 +130,18 @@ from piptools.resolver import combine_install_requirements
                     "werkzeug==0.10.4 (from flask==0.10.1)",
                 ],
             ),
+            # We shouldn't fail on invalid irrelevant pip constraints
+            # See: GH-1178
+            (
+                ["Flask", ("missing-dependency<1.0", True), ("itsdangerous", True)],
+                [
+                    "flask==0.10.1",
+                    "itsdangerous==0.24",
+                    "markupsafe==0.23 (from jinja2==2.7.3->flask==0.10.1)",
+                    "jinja2==2.7.3 (from flask==0.10.1)",
+                    "werkzeug==0.10.4 (from flask==0.10.1)",
+                ],
+            ),
             # Unsafe dependencies should be filtered
             (
                 ["setuptools==35.0.0", "anyjson==0.3.3"],
@@ -154,6 +167,28 @@ from piptools.resolver import combine_install_requirements
                         "setuptools==34.0.0->fake-piptools-test-with-unsafe-deps==0.1)"
                     ),
                 },
+            ),
+            # Git URL requirement
+            # See: GH-851
+            (
+                [
+                    "git+https://github.com/celery/billiard#egg=billiard==3.5.9999",
+                    "celery==4.0.2",
+                ],
+                [
+                    "amqp==2.1.4 (from kombu==4.0.2->celery==4.0.2)",
+                    "kombu==4.0.2 (from celery==4.0.2)",
+                    "billiard<3.6.0,==3.5.9999,>=3.5.0.2 from "
+                    "git+https://github.com/celery/billiard#egg=billiard==3.5.9999",
+                    "vine==1.1.3 (from amqp==2.1.4->kombu==4.0.2->celery==4.0.2)",
+                    "celery==4.0.2",
+                    "pytz==2016.4 (from celery==4.0.2)",
+                ],
+            ),
+            # Check that dependencies of relevant constraints are resolved
+            (
+                ["aiohttp", ("yarl==1.4.2", True)],
+                ["aiohttp==3.6.2", "idna==2.8 (from yarl==1.4.2)", "yarl==1.4.2"],
             ),
         ]
     ),
@@ -236,17 +271,30 @@ def test_iter_dependencies(resolver, from_line):
         next(res._iter_dependencies(ireq))
 
 
-def test_combine_install_requirements(from_line):
+def test_iter_dependencies_results(resolver, from_line):
+    res = resolver([])
+    ireq = from_line("aiohttp==3.6.2")
+    assert next(res._iter_dependencies(ireq)).comes_from == ireq
+
+
+def test_iter_dependencies_ignores_constraints(resolver, from_line):
+    res = resolver([])
+    ireq = from_line("aiohttp==3.6.2", constraint=True)
+    with pytest.raises(StopIteration):
+        next(res._iter_dependencies(ireq))
+
+
+def test_combine_install_requirements(repository, from_line):
     celery30 = from_line("celery>3.0", comes_from="-r requirements.in")
     celery31 = from_line("celery==3.1.1", comes_from=from_line("fake-package"))
     celery32 = from_line("celery<3.2")
 
-    combined = combine_install_requirements([celery30, celery31])
+    combined = combine_install_requirements(repository, [celery30, celery31])
     assert combined.comes_from == celery31.comes_from  # shortest string
     assert set(combined._source_ireqs) == {celery30, celery31}
     assert str(combined.req.specifier) == "==3.1.1,>3.0"
 
-    combined_all = combine_install_requirements([celery32, combined])
+    combined_all = combine_install_requirements(repository, [celery32, combined])
     assert combined_all.comes_from is None
     assert set(combined_all._source_ireqs) == {celery30, celery31, celery32}
     assert str(combined_all.req.specifier) == "<3.2,==3.1.1,>3.0"
@@ -264,8 +312,132 @@ def test_compile_failure_shows_provenance(resolver, from_line):
     with pytest.raises(NoCandidateFound) as err:
         resolver(requirements).resolve()
     lines = str(err.value).splitlines()
+    assert lines[-2].strip() == "celery>3.2"
     assert (
-        lines[-2].strip()
+        lines[-1].strip()
         == "celery==3.1.18 (from fake-piptools-test-with-pinned-deps==0.1)"
     )
-    assert lines[-1].strip() == "celery>3.2"
+
+
+@pytest.mark.parametrize(
+    ("left_hand", "right_hand", "expected"),
+    (
+        ("test_package", "test_package", True),
+        ("test_package==1.2.3", "test_package==1.2.3", True),
+        ("test_package>=1.2.3", "test_package>=1.2.3", True),
+        pytest.param(
+            "test_package==1.2",
+            "test_package==1.2.0",
+            True,
+            marks=pytest.mark.skipif(
+                PIP_VERSION[:2] < (20, 2), reason="Required only for pip>=20.2"
+            ),
+        ),
+        pytest.param(
+            "test_package>=1.2",
+            "test_package>=1.2.0",
+            True,
+            marks=pytest.mark.skipif(
+                PIP_VERSION[:2] < (20, 2), reason="Required only for pip>=20.2"
+            ),
+        ),
+        ("test_package[foo,bar]==1.2", "test_package[bar,foo]==1.2", True),
+        ("test_package[foo,bar]>=1.2", "test_package[bar,foo]>=1.2", True),
+        pytest.param(
+            "test_package[foo,bar]==1.2",
+            "test_package[bar,foo]==1.2.0",
+            True,
+            marks=pytest.mark.skipif(
+                PIP_VERSION[:2] < (20, 2), reason="Required only for pip>=20.2"
+            ),
+        ),
+        pytest.param(
+            "test_package[foo,bar]>=1.2",
+            "test_package[bar,foo]>=1.2.0",
+            True,
+            marks=pytest.mark.skipif(
+                PIP_VERSION[:2] < (20, 2), reason="Required only for pip>=20.2"
+            ),
+        ),
+        ("test_package", "other_test_package", False),
+        ("test_package==1.2.3", "other_test_package==1.2.3", False),
+        ("test_package==1.2.3", "test_package==1.2.4", False),
+        ("test_package>=1.2.3", "test_package>=1.2.4", False),
+        ("test_package>=1.2.3", "test_package<=1.2.3", False),
+        ("test_package==1.2", "test_package==1.2.3", False),
+        ("test_package>=1.2", "test_package>=1.2.3", False),
+        ("test_package[foo]==1.2", "test_package[bar]==1.2.0", False),
+        ("test_package[foo]>=1.2", "test_package[bar]>=1.2.0", False),
+        ("test_package[foo,bar]>=1.2", "test_package[bar]>=1.2.0", False),
+        ("test_package[foo,bar]>=1.2", "test_package[bar,zee]>=1.2.0", False),
+    ),
+)
+def test_RequirementSummary_equality(from_line, left_hand, right_hand, expected):
+    """
+    RequirementSummary should report proper equality.
+    """
+    lh_summary = RequirementSummary(from_line(left_hand))
+    rh_summary = RequirementSummary(from_line(right_hand))
+    assert (lh_summary == rh_summary) is expected
+
+
+@pytest.mark.parametrize(
+    ("left_hand", "right_hand", "expected"),
+    (
+        ("test_package", "test_package", True),
+        ("test_package==1.2.3", "test_package==1.2.3", True),
+        ("test_package>=1.2.3", "test_package>=1.2.3", True),
+        pytest.param(
+            "test_package==1.2",
+            "test_package==1.2.0",
+            True,
+            marks=pytest.mark.skipif(
+                PIP_VERSION[:2] < (20, 2), reason="Required only for pip>=20.2"
+            ),
+        ),
+        pytest.param(
+            "test_package>=1.2",
+            "test_package>=1.2.0",
+            True,
+            marks=pytest.mark.skipif(
+                PIP_VERSION[:2] < (20, 2), reason="Required only for pip>=20.2"
+            ),
+        ),
+        ("test_package[foo,bar]==1.2", "test_package[bar,foo]==1.2", True),
+        ("test_package[foo,bar]>=1.2", "test_package[bar,foo]>=1.2", True),
+        pytest.param(
+            "test_package[foo,bar]==1.2",
+            "test_package[bar,foo]==1.2.0",
+            True,
+            marks=pytest.mark.skipif(
+                PIP_VERSION[:2] < (20, 2), reason="Required only for pip>=20.2"
+            ),
+        ),
+        pytest.param(
+            "test_package[foo,bar]>=1.2",
+            "test_package[bar,foo]>=1.2.0",
+            True,
+            marks=pytest.mark.skipif(
+                PIP_VERSION[:2] < (20, 2), reason="Required only for pip>=20.2"
+            ),
+        ),
+        ("test_package", "other_test_package", False),
+        ("test_package==1.2.3", "other_test_package==1.2.3", False),
+        ("test_package==1.2.3", "test_package==1.2.4", False),
+        ("test_package>=1.2.3", "test_package>=1.2.4", False),
+        ("test_package>=1.2.3", "test_package<=1.2.3", False),
+        ("test_package==1.2", "test_package==1.2.3", False),
+        ("test_package>=1.2", "test_package>=1.2.3", False),
+        ("test_package[foo]==1.2", "test_package[bar]==1.2.0", False),
+        ("test_package[foo]>=1.2", "test_package[bar]>=1.2.0", False),
+        ("test_package[foo,bar]>=1.2", "test_package[bar]>=1.2.0", False),
+        ("test_package[foo,bar]>=1.2", "test_package[bar,zee]>=1.2.0", False),
+    ),
+)
+def test_RequirementSummary_hash_equality(from_line, left_hand, right_hand, expected):
+    """
+    RequirementSummary hash for equivalent requirements should be equal.
+    """
+    lh_summary = RequirementSummary(from_line(left_hand))
+    rh_summary = RequirementSummary(from_line(right_hand))
+    assert (hash(lh_summary) == hash(rh_summary)) is expected
